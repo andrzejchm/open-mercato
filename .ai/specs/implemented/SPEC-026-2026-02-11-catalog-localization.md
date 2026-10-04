@@ -502,26 +502,22 @@ If undo for translations is needed in the future, the translation CRUD can be wr
 Custom field definitions and values are entities like any other — they can have translations via the same `entity_translations` table:
 
 **CustomFieldDef translations:**
+
+The Translation Manager on the field definitions page stores them under the canonical record identity `entity_type: 'entities:custom_field_def'`, `entity_id: '<entityId>:<key>'` (for example `customers:customer_person_profile:priority`). The identity is built by `buildCustomFieldDefTranslationRecordId()` in `packages/core/src/modules/entities/lib/definition-translation-identity.ts`, so one translation serves the tenant-level and organization-level variants of the same field. Option labels are stored as flat dotted fields because the translations body only accepts string values per field:
+
 ```json
-// entity_type: 'entities:custom_field_def', entity_id: '<def_id>'
+// entity_type: 'entities:custom_field_def', entity_id: 'customers:customer_person_profile:priority'
 {
   "de": {
-    "label": "Material",
-    "description": "Hauptmaterial des Produkts",
-    "groupTitle": "Technische Daten"
+    "label": "Qualitätsstufe",
+    "description": "Qualitätsstufe des Produkts",
+    "options.high.label": "Hoch",
+    "options.low.label": "Niedrig"
   }
 }
 ```
 
-For select-type custom fields, option labels are stored in a nested structure:
-```json
-{
-  "de": {
-    "label": "Qualitätsstufe",
-    "options": { "high": "Hoch", "medium": "Mittel", "low": "Niedrig" }
-  }
-}
-```
+`GET /api/entities/definitions` overlays these translations for the active locale onto `label`, `description` and `options[].label` (see the 2026-10-04 changelog entry). Rows stored under the definition row id (`entity_id: '<def_id>'`, the identity this spec originally proposed) are still honoured as a lower-priority fallback.
 
 **CustomFieldValue translations (text/multiline only):**
 ```json
@@ -682,6 +678,13 @@ One generic table, one row per entity, JSONB stores all locale translations. Thi
 ---
 
 ## Changelog
+
+### 2026-10-04 (v4)
+- `GET /api/entities/definitions` now applies `entities:custom_field_def` translations for the active locale to labels, descriptions and option labels (`options.<value>.label`), falling back per field to the base definition.
+- Translations resolve per request, after the definitions cache read, through the translation overlay plugin: the cache stays locale-independent, a translation edit is visible immediately and no locale can leak across cache entries. The cached payload now wraps the response body with the winning-definition sources (`version: 2`); older cache entries are ignored and rewritten.
+- Resolution is scoped to the caller's tenant and organization. Organization-level translations override tenant-level ones per field, and an organization-owned winning definition never receives tenant-level translations that belong to the tenant-level definition it overrides.
+- Record identity reconciled: the canonical `entityId:key` identity written by the Translation Manager is the source of truth (shared helper used by both the page and the read path); the definition-id identity is kept as a read-only fallback.
+- `useCustomFieldDefs` query keys include the active locale so a locale switch refetches instead of reusing the other locale's labels.
 
 ### 2026-02-13 (v3)
 - Complete rewrite per pkarw direction (issue #527, Feb 12 comment)

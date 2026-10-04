@@ -683,6 +683,14 @@ One generic table, one row per entity, JSONB stores all locale translations. Thi
 
 ## Changelog
 
+### 2026-10-04 (v4)
+- `GET /api/entities/definitions` localizes `label`, `description` and option labels for the request locale, resolved like the CRUD overlay (`locale` query, `x-locale` header, `locale` cookie, `Accept-Language`)
+- Custom field definition translations are stored with `entity_type = 'entities:custom_field_def'` and `entity_id = '<entityId>:<fieldKey>'` (not `<def_id>`), as flat keys `label`, `description` and `options.<value>.label`
+- Lookup order, key by key: the request organization row, then the tenant-wide (organization-less) row; rows of other tenants or organizations are never read
+- The shared definitions cache stays locale-free and base-locale; localization runs on a copy after the cache read, and responses carry `Vary: Accept-Language, Cookie, X-Locale` when the translation overlay is registered
+- No-op when the translations module is not registered; `definitions.manage` (designer) keeps returning raw base text
+- Not covered: `customFields[].label` in CRUD list/detail responses, fieldset and group titles
+
 ### 2026-02-13 (v3)
 - Complete rewrite per pkarw direction (issue #527, Feb 12 comment)
 - Replaced per-entity JSONB columns with dedicated `entity_translations` table

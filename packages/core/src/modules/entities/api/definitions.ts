@@ -41,6 +41,11 @@ import {
   selectVisibleDefinitionWinner,
 } from '../lib/definition-scope'
 import { resolveEntityDefinitionsVersion } from '../lib/definitions-version'
+import {
+  DEFINITIONS_LOCALE_VARY_HEADER,
+  isDefinitionsLocalizationAvailable,
+  localizeDefinitionsBody,
+} from '../lib/localize-definitions'
 import { createLogger } from '@open-mercato/shared/lib/logger'
 
 const logger = createLogger('entities').child({ component: 'definitions' })
@@ -324,6 +329,19 @@ export async function GET(req: Request) {
     }
   }
 
+  const respondWithDefinitions = async <T extends { items: any[] }>(rawBody: T) => {
+    const body = await localizeDefinitionsBody(rawBody, {
+      request: req,
+      container,
+      tenantId,
+      organizationId,
+    })
+    return NextResponse.json(
+      body,
+      isDefinitionsLocalizationAvailable() ? { headers: { Vary: DEFINITIONS_LOCALE_VARY_HEADER } } : undefined,
+    )
+  }
+
   let cacheKey: string | null = null
   if (cache && !fieldsetFilter) {
     cacheKey = createDefinitionsCacheKey({
@@ -334,7 +352,7 @@ export async function GET(req: Request) {
     try {
       const cached = await cache.get(cacheKey)
       if (cached) {
-        return NextResponse.json(cached)
+        return respondWithDefinitions(cached as { items: any[] })
       }
     } catch (err) {
       logger.warn('Failed to read cache', { err })
@@ -531,7 +549,7 @@ export async function GET(req: Request) {
     }
   }
 
-  return NextResponse.json(responseBody)
+  return respondWithDefinitions(responseBody)
 }
 
 export async function POST(req: Request) {

@@ -26,13 +26,7 @@ import {
   DialogTitle,
 } from '@open-mercato/ui/primitives/dialog'
 import { normalizeCustomFieldOptions } from '@open-mercato/shared/modules/entities/options'
-import {
-  CUSTOM_FIELD_DEF_DESCRIPTION_TRANSLATION_FIELD,
-  CUSTOM_FIELD_DEF_LABEL_TRANSLATION_FIELD,
-  CUSTOM_FIELD_DEF_TRANSLATION_ENTITY_TYPE,
-  buildCustomFieldDefTranslationRecordId,
-  buildCustomFieldOptionLabelTranslationField,
-} from '@open-mercato/core/modules/entities/lib/definition-translation-identity'
+import { buildCustomFieldDefTranslationRecordId } from '@open-mercato/core/modules/entities/lib/definition-translation-identity'
 import { TranslationManager } from '@open-mercato/core/modules/translations/components/TranslationManager'
 
 type Def = FieldDefinition
@@ -79,13 +73,10 @@ export default function EditDefinitionsPage({ params }: { params?: { entityId?: 
   const translateFields = React.useMemo(() => {
     if (!translateDef) return undefined
     const { def } = translateDef
-    const fields: string[] = [
-      CUSTOM_FIELD_DEF_LABEL_TRANSLATION_FIELD,
-      CUSTOM_FIELD_DEF_DESCRIPTION_TRANSLATION_FIELD,
-    ]
+    const fields: string[] = ['label', 'description']
     const options = normalizeCustomFieldOptions(def.configJson?.options)
     for (const opt of options) {
-      if (opt.value) fields.push(buildCustomFieldOptionLabelTranslationField(opt.value))
+      if (opt.value) fields.push(`options.${opt.value}.label`)
     }
     return fields
   }, [translateDef])
@@ -94,11 +85,11 @@ export default function EditDefinitionsPage({ params }: { params?: { entityId?: 
     if (!translateDef) return undefined
     const { def } = translateDef
     const base: Record<string, string> = {}
-    if (typeof def.configJson?.label === 'string') base[CUSTOM_FIELD_DEF_LABEL_TRANSLATION_FIELD] = def.configJson.label
-    if (typeof def.configJson?.description === 'string') base[CUSTOM_FIELD_DEF_DESCRIPTION_TRANSLATION_FIELD] = def.configJson.description
+    if (typeof def.configJson?.label === 'string') base.label = def.configJson.label
+    if (typeof def.configJson?.description === 'string') base.description = def.configJson.description
     const options = normalizeCustomFieldOptions(def.configJson?.options)
     for (const opt of options) {
-      if (opt.value && opt.label) base[buildCustomFieldOptionLabelTranslationField(opt.value)] = opt.label
+      if (opt.value && opt.label) base[`options.${opt.value}.label`] = opt.label
     }
     return base
   }, [translateDef])
@@ -660,7 +651,7 @@ export default function EditDefinitionsPage({ params }: { params?: { entityId?: 
             <TranslationManager
               mode="embedded"
               compact
-              entityType={CUSTOM_FIELD_DEF_TRANSLATION_ENTITY_TYPE}
+              entityType="entities:custom_field_def"
               recordId={buildCustomFieldDefTranslationRecordId(translateDef.entityId, translateDef.def.key)}
               baseValues={translateBaseValues}
               translatableFields={translateFields}

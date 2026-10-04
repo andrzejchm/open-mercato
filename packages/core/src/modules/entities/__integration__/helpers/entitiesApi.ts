@@ -144,3 +144,50 @@ export function rawRequest(
     data: data === undefined ? undefined : JSON.stringify(data),
   });
 }
+
+export const FIELD_DEFINITION_TRANSLATION_TYPE = 'entities:custom_field_def';
+
+export function saveFieldDefinitionTranslation(
+  request: APIRequestContext,
+  token: string,
+  entityId: string,
+  key: string,
+  translations: Record<string, Record<string, string>>,
+): Promise<APIResponse> {
+  const recordId = encodeURIComponent(`${entityId}:${key}`);
+  return apiRequest(request, 'PUT', `/api/translations/${encodeURIComponent(FIELD_DEFINITION_TRANSLATION_TYPE)}/${recordId}`, {
+    token,
+    data: translations,
+  });
+}
+
+export async function deleteFieldDefinitionTranslationIfExists(
+  request: APIRequestContext,
+  token: string | null,
+  entityId: string,
+  key: string,
+): Promise<void> {
+  if (!token) return;
+  const recordId = encodeURIComponent(`${entityId}:${key}`);
+  await apiRequest(request, 'DELETE', `/api/translations/${encodeURIComponent(FIELD_DEFINITION_TRANSLATION_TYPE)}/${recordId}`, {
+    token,
+  }).catch(() => undefined);
+}
+
+export async function readDefinitionField(
+  request: APIRequestContext,
+  token: string,
+  entityId: string,
+  key: string,
+  locale: string,
+): Promise<{ label?: string; description?: string; options?: Array<{ value: string; label: string }> } | undefined> {
+  const response = await apiRequest(
+    request,
+    'GET',
+    `/api/entities/definitions?entityId=${encodeURIComponent(entityId)}&locale=${locale}`,
+    { token },
+  );
+  expect(response.status(), 'GET /api/entities/definitions 200').toBe(200);
+  const body = (await response.json()) as { items?: Array<{ key: string; label?: string; description?: string; options?: Array<{ value: string; label: string }> }> };
+  return body.items?.find((item) => item.key === key);
+}

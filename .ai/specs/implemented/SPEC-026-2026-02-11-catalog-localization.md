@@ -502,11 +502,8 @@ If undo for translations is needed in the future, the translation CRUD can be wr
 Custom field definitions and values are entities like any other — they can have translations via the same `entity_translations` table:
 
 **CustomFieldDef translations:**
-
-The Translation Manager on the field definitions page stores them under the canonical record identity `entity_type: 'entities:custom_field_def'`, `entity_id: '<entityId>:<key>'` (for example `customers:customer_person_profile:priority`). The identity is built by `buildCustomFieldDefTranslationRecordId()` in `packages/core/src/modules/entities/lib/definition-translation-identity.ts`, so one translation serves the tenant-level and organization-level variants of the same field. Option labels are stored as flat dotted fields because the translations body only accepts string values per field:
-
 ```json
-// entity_type: 'entities:custom_field_def', entity_id: 'customers:customer_person_profile:priority'
+// entity_type: 'entities:custom_field_def', entity_id: '<entityId>:<key>'
 {
   "de": {
     "label": "Qualitätsstufe",
@@ -517,7 +514,7 @@ The Translation Manager on the field definitions page stores them under the cano
 }
 ```
 
-`GET /api/entities/definitions` overlays these translations for the active locale onto `label`, `description` and `options[].label` (see the 2026-10-04 changelog entry). Rows stored under the definition row id (`entity_id: '<def_id>'`, the identity this spec originally proposed) are still honoured as a lower-priority fallback.
+The Translation Manager writes this identity (`<entityId>:<key>`, option labels as flat `options.<value>.label` fields). Like every translation row, it belongs to the exact tenant and organization it was saved under, and `GET /api/entities/definitions` reads the row of the caller's own tenant and organization.
 
 **CustomFieldValue translations (text/multiline only):**
 ```json
@@ -680,11 +677,10 @@ One generic table, one row per entity, JSONB stores all locale translations. Thi
 ## Changelog
 
 ### 2026-10-04 (v4)
-- `GET /api/entities/definitions` now applies `entities:custom_field_def` translations for the active locale to labels, descriptions and option labels (`options.<value>.label`), falling back per field to the base definition.
-- Translations resolve per request, after the definitions cache read, through the translation overlay plugin: the cache stays locale-independent, a translation edit is visible immediately and no locale can leak across cache entries. The cached payload now wraps the response body with the winning-definition sources (`version: 2`); older cache entries are ignored and rewritten.
-- Resolution is scoped to the caller's tenant and organization. Organization-level translations override tenant-level ones per field, and an organization-owned winning definition never receives tenant-level translations that belong to the tenant-level definition it overrides.
-- Record identity reconciled: the canonical `entityId:key` identity written by the Translation Manager is the source of truth (shared helper used by both the page and the read path); the definition-id identity is kept as a read-only fallback.
-- `useCustomFieldDefs` query keys include the active locale so a locale switch refetches instead of reusing the other locale's labels.
+- `GET /api/entities/definitions` localizes `label`, `description` and option labels from `entities:custom_field_def` translations for the locale resolved by the translation overlay (`?locale`, `X-Locale`, `locale` cookie, `Accept-Language`), with a per-field fallback to the base value. One translation query per request, applied after the definitions cache so the cached payload stays locale-independent.
+- Backward compatibility: no route, schema or cache-key change. Without a matching translation the response is unchanged; a caller that sends a locale (explicitly or via `Accept-Language`) now receives translated values where translations exist.
+- Corrected the record identity and option-label format above to what the Translation Manager writes (`<entityId>:<key>`, flat `options.<value>.label`); the earlier definition-id and nested-`options` examples were never written by any caller.
+- Integration coverage: `TC-ENTITIES-009` (locales, fallback, option labels, cached read) and `TC-ENTITIES-010` (organization isolation).
 
 ### 2026-02-13 (v3)
 - Complete rewrite per pkarw direction (issue #527, Feb 12 comment)

@@ -41,45 +41,10 @@ import {
   selectVisibleDefinitionWinner,
 } from '../lib/definition-scope'
 import { resolveEntityDefinitionsVersion } from '../lib/definitions-version'
-import {
-  localizeDefinitionItemsForRequest,
-  type DefinitionLocalizationSource,
-  type LocalizableDefinitionItem,
-} from '../lib/definition-localization'
+import { isDefinitionsPayload, localizeDefinitions, type LocalizableDefinition } from '../lib/localize-definitions'
 import { createLogger } from '@open-mercato/shared/lib/logger'
 
 const logger = createLogger('entities').child({ component: 'definitions' })
-
-type DefinitionsResponseBody = {
-  items: Array<LocalizableDefinitionItem & Record<string, unknown>>
-  fieldsetsByEntity: Record<string, CustomFieldsetDefinition[]>
-  entitySettings: Record<string, { singleFieldsetPerRecord: boolean }>
-}
-
-/**
- * The cache holds the locale-independent base payload only. Translations are overlaid per
- * request after the cache read, so one entry serves every locale, a translation edit is
- * visible immediately, and a cached payload can never leak one locale into another.
- * `sources` records the winning definition behind each item so that overlay can honour
- * inheritance; it is internal to the cache and never serialized into the response.
- */
-type CachedDefinitionsEnvelope = {
-  version: 2
-  body: DefinitionsResponseBody
-  sources: DefinitionLocalizationSource[]
-}
-
-function isCachedDefinitionsEnvelope(value: unknown): value is CachedDefinitionsEnvelope {
-  if (!value || typeof value !== 'object') return false
-  const candidate = value as Partial<CachedDefinitionsEnvelope>
-  return (
-    candidate.version === 2 &&
-    Array.isArray(candidate.sources) &&
-    !!candidate.body &&
-    Array.isArray(candidate.body.items) &&
-    candidate.body.items.length === candidate.sources.length
-  )
-}
 
 /**
  * Validate defaultValue against the field kind. Returns an error message string
@@ -360,17 +325,11 @@ export async function GET(req: Request) {
     }
   }
 
-  const respondLocalized = async (
-    body: DefinitionsResponseBody,
-    sources: DefinitionLocalizationSource[],
-  ) => {
-    const items = await localizeDefinitionItemsForRequest(body.items, sources, {
-      request: req,
-      scope: { tenantId, organizationId },
-      container,
+  const respondLocalized = async <T extends { items: LocalizableDefinition[] }>(body: T) =>
+    NextResponse.json({
+      ...body,
+      items: await localizeDefinitions(body.items, { request: req, container, tenantId, organizationId }),
     })
-    return NextResponse.json({ ...body, items })
-  }
 
   let cacheKey: string | null = null
   if (cache && !fieldsetFilter) {
@@ -379,14 +338,13 @@ export async function GET(req: Request) {
       organizationId,
       entityIds,
     })
-    let cached: unknown = null
     try {
-      cached = await cache.get(cacheKey)
+      const cached = await cache.get(cacheKey)
+      if (isDefinitionsPayload(cached)) {
+        return respondLocalized(cached)
+      }
     } catch (err) {
       logger.warn('Failed to read cache', { err })
-    }
-    if (isCachedDefinitionsEnvelope(cached)) {
-      return respondLocalized(cached.body, cached.sources)
     }
   }
 
@@ -529,13 +487,7 @@ export async function GET(req: Request) {
         group: groupInfo,
       } as any
       const metrics = computeDefinitionScore(d, candidateBase, entityOrder.get(entityId) ?? Number.MAX_SAFE_INTEGER)
-      const localizationSource: DefinitionLocalizationSource = {
-        definitionId: typeof d.id === 'string' ? d.id : null,
-        entityId,
-        key: String(d.key),
-        organizationScoped: Boolean(d.organizationId),
-      }
-      const candidate = { ...candidateBase, __score: metrics, __localizationSource: localizationSource }
+      const candidate = { ...candidateBase, __score: metrics }
       const existing = (items as any[]).find((entry) => entry.key.toLowerCase() === keyLower)
       if (!existing) {
         items.push(candidate)
@@ -554,18 +506,11 @@ export async function GET(req: Request) {
     }
   }
 
-  const ranked = items.map((item: any) => {
+  const sanitized = items.map((item: any) => {
     const { __score, ...rest } = item
     return rest
   })
-  ranked.sort((a: any, b: any) => ((a.priority ?? 0) - (b.priority ?? 0)))
-  const localizationSources: DefinitionLocalizationSource[] = ranked.map(
-    (item: any) => item.__localizationSource,
-  )
-  const sanitized: DefinitionsResponseBody['items'] = ranked.map((item: any) => {
-    const { __localizationSource, ...rest } = item
-    return rest
-  })
+  sanitized.sort((a: any, b: any) => ((a.priority ?? 0) - (b.priority ?? 0)))
 
   const fieldsetsByEntity: Record<string, CustomFieldsetDefinition[]> = {}
   const entitySettings: Record<string, { singleFieldsetPerRecord: boolean }> = {}
@@ -575,7 +520,7 @@ export async function GET(req: Request) {
     entitySettings[entityId] = { singleFieldsetPerRecord: cfg.singleFieldsetPerRecord }
   }
 
-  const responseBody: DefinitionsResponseBody = { items: sanitized, fieldsetsByEntity, entitySettings }
+  const responseBody = { items: sanitized, fieldsetsByEntity, entitySettings }
 
   if (cache && cacheKey && !fieldsetFilter) {
     const tags = createDefinitionsCacheTags({
@@ -583,13 +528,8 @@ export async function GET(req: Request) {
       organizationId,
       entityIds,
     })
-    const envelope: CachedDefinitionsEnvelope = {
-      version: 2,
-      body: responseBody,
-      sources: localizationSources,
-    }
     try {
-      await cache.set(cacheKey, envelope, {
+      await cache.set(cacheKey, responseBody, {
         ttl: ENTITY_DEFINITIONS_CACHE_TTL_MS,
         tags,
       })
@@ -598,7 +538,7 @@ export async function GET(req: Request) {
     }
   }
 
-  return respondLocalized(responseBody, localizationSources)
+  return respondLocalized(responseBody)
 }
 
 export async function POST(req: Request) {
@@ -759,12 +699,6 @@ const definitionsQuerySchema = z
     entityId: z.union([z.string(), z.array(z.string())]).optional(),
     entityIds: z.string().optional(),
     fieldset: z.string().regex(fieldsetCodeRegex).optional(),
-    locale: z
-      .string()
-      .min(2)
-      .max(10)
-      .optional()
-      .describe('Overrides the locale resolved from the x-locale header, locale cookie or Accept-Language header.'),
   })
   .refine(
     (value) => {
@@ -863,7 +797,7 @@ export const openApi: OpenApiRouteDoc = {
   methods: {
     GET: {
       summary: 'List active custom field definitions',
-      description: 'Returns active custom field definitions for the supplied entity ids, respecting tenant scope and tombstones. Labels, descriptions and option labels are localized with the entities:custom_field_def translations of the active locale; fields without a translation keep their base value.',
+      description: 'Returns active custom field definitions for the supplied entity ids, respecting tenant scope and tombstones. Label, description and option labels are localized from the entities:custom_field_def translations of the locale resolved from ?locale, X-Locale, the locale cookie or Accept-Language, falling back to the base values.',
       query: definitionsQuerySchema,
       responses: [
         {

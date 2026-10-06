@@ -140,17 +140,14 @@ export async function setRoleAclFeatures(
 export async function setUserAclVisibility(
   request: APIRequestContext,
   token: string,
-  input: { userId: string; organizations: string[] | null; features?: string[]; tenantId?: string },
+  input: { userId: string; organizations: string[] | null; features?: string[] },
 ): Promise<void> {
-  const payload: { userId: string; organizations: string[] | null; features?: string[]; tenantId?: string } = {
+  const payload: { userId: string; organizations: string[] | null; features?: string[] } = {
     userId: input.userId,
     organizations: input.organizations,
   };
   if (input.features !== undefined) {
     payload.features = input.features;
-  }
-  if (input.tenantId !== undefined) {
-    payload.tenantId = input.tenantId;
   }
   const response = await apiRequest(request, 'PUT', '/api/auth/users/acl', {
     token,

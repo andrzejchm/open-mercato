@@ -41,7 +41,7 @@ import {
   selectVisibleDefinitionWinner,
 } from '../lib/definition-scope'
 import { resolveEntityDefinitionsVersion } from '../lib/definitions-version'
-import { isDefinitionsPayload, localizeDefinitions, type LocalizableDefinition } from '../lib/localize-definitions'
+import { localizeDefinitions, type LocalizableDefinition } from '../lib/localize-definitions'
 import { createLogger } from '@open-mercato/shared/lib/logger'
 
 const logger = createLogger('entities').child({ component: 'definitions' })
@@ -325,11 +325,7 @@ export async function GET(req: Request) {
     }
   }
 
-  const respondLocalized = async <T extends { items: LocalizableDefinition[] }>(body: T) =>
-    NextResponse.json({
-      ...body,
-      items: await localizeDefinitions(body.items, { request: req, container, tenantId, organizationId }),
-    })
+  const localization = { request: req, container, tenantId, organizationId }
 
   let cacheKey: string | null = null
   if (cache && !fieldsetFilter) {
@@ -340,8 +336,8 @@ export async function GET(req: Request) {
     })
     try {
       const cached = await cache.get(cacheKey)
-      if (isDefinitionsPayload(cached)) {
-        return respondLocalized(cached)
+      if (cached) {
+        return NextResponse.json(await localizeDefinitions(cached as { items: LocalizableDefinition[] }, localization))
       }
     } catch (err) {
       logger.warn('Failed to read cache', { err })
@@ -538,7 +534,7 @@ export async function GET(req: Request) {
     }
   }
 
-  return respondLocalized(responseBody)
+  return NextResponse.json(await localizeDefinitions(responseBody, localization))
 }
 
 export async function POST(req: Request) {
@@ -797,7 +793,7 @@ export const openApi: OpenApiRouteDoc = {
   methods: {
     GET: {
       summary: 'List active custom field definitions',
-      description: 'Returns active custom field definitions for the supplied entity ids, respecting tenant scope and tombstones. Label, description and option labels are localized from the entities:custom_field_def translations of the locale resolved from ?locale, X-Locale, the locale cookie or Accept-Language, falling back to the base values.',
+      description: 'Returns active custom field definitions for the supplied entity ids, respecting tenant scope and tombstones. Label, description and option labels are localized from the entities:custom_field_def translations of the resolved request locale, falling back to the base values.',
       query: definitionsQuerySchema,
       responses: [
         {

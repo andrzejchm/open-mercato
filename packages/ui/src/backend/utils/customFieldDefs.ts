@@ -1,6 +1,5 @@
 import * as React from 'react'
 import { useQuery, type UseQueryResult, type QueryClient } from '@tanstack/react-query'
-import { useOptionalLocale } from '@open-mercato/shared/lib/i18n/context'
 import { readApiResultOrThrow } from './apiCall'
 import type { CustomFieldOptionDto } from '@open-mercato/shared/modules/entities/options'
 
@@ -186,16 +185,9 @@ export function useCustomFieldDefs<TData = CustomFieldDefDto[]>(
   const idsSignature = React.useMemo(() => JSON.stringify(normalizedIds), [normalizedIds])
   const extrasSignature = React.useMemo(() => JSON.stringify(keyExtras ?? []), [keyExtras])
   const normalizedFieldset = typeof fieldset === 'string' && fieldset.trim().length ? fieldset.trim() : null
-  const locale = useOptionalLocale()
   const queryKey = React.useMemo(
-    () => [
-      'customFieldDefs',
-      ...(keyExtras ?? []),
-      ...normalizedIds,
-      `fieldset:${normalizedFieldset ?? 'default'}`,
-      `locale:${locale ?? 'default'}`,
-    ],
-    [idsSignature, extrasSignature, normalizedFieldset, locale]
+    () => ['customFieldDefs', ...(keyExtras ?? []), ...normalizedIds, `fieldset:${normalizedFieldset ?? 'default'}`],
+    [idsSignature, extrasSignature, normalizedFieldset]
   )
   const enabled = enabledOption && normalizedIds.length > 0
 

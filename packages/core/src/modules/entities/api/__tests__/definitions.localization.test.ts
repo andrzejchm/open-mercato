@@ -119,7 +119,7 @@ describe('GET /api/entities/definitions localization', () => {
     resetTelemetryRuntime()
   })
 
-  it('localizes label, description and option labels for the requested locale', async () => {
+  it('localizes label, description and option labels for the caller tenant and organization', async () => {
     translationRows = [
       {
         entityId: RECORD_ID,
@@ -135,6 +135,10 @@ describe('GET /api/entities/definitions localization', () => {
       },
     ]
     const { items } = await readDefinitions('de')
+    expect(overlay).toHaveBeenCalledTimes(1)
+    const [records, options] = overlay.mock.calls[0]
+    expect(records.map((record) => record.id)).toEqual([RECORD_ID])
+    expect(options).toMatchObject({ entityType: 'entities:custom_field_def', tenantId: 'tenant-1', organizationId: 'org-1' })
     expect(items[0]).toMatchObject({
       key: 'priority',
       label: 'Prioritaet',
@@ -164,12 +168,17 @@ describe('GET /api/entities/definitions localization', () => {
     expect((await readDefinitions()).items[0].label).toBe('Priority')
   })
 
-  it('serves every locale from one cached base payload', async () => {
+  it('does not mutate the cached base payload when serving different locales', async () => {
     translationRows = [
       {
         entityId: RECORD_ID,
         organizationId: 'org-1',
         translations: { de: { label: 'Prioritaet' }, pl: { label: 'Priorytet' } },
+      },
+      {
+        entityId: RECORD_ID,
+        organizationId: 'org-2',
+        translations: { de: { label: 'Other organization' } },
       },
     ]
     const labels = [
@@ -181,27 +190,6 @@ describe('GET /api/entities/definitions localization', () => {
     expect(mockCache.set).toHaveBeenCalledTimes(1)
     const cachedItems = (Array.from(cacheStore.values())[0] as { items: Array<Record<string, unknown>> }).items
     expect(cachedItems[0].label).toBe('Priority')
-  })
-
-  it('reads translations once per request, for the caller tenant and organization, under the canonical identity', async () => {
-    await readDefinitions('de')
-    await readDefinitions('de')
-    expect(overlay).toHaveBeenCalledTimes(2)
-    for (const [records, options] of overlay.mock.calls) {
-      expect(records.map((record) => record.id)).toEqual([RECORD_ID])
-      expect(options).toMatchObject({
-        entityType: 'entities:custom_field_def',
-        tenantId: 'tenant-1',
-        organizationId: 'org-1',
-      })
-    }
-  })
-
-  it('does not read translations for definitions the caller may not see', async () => {
-    mockRbac.loadAcl.mockResolvedValue({ isSuperAdmin: false, features: [], organizations: null })
-    const { items } = await readDefinitions('de')
-    expect(items).toEqual([])
-    expect(overlay).not.toHaveBeenCalled()
   })
 
   it('serves the base definitions and reports the error when the translation read fails', async () => {

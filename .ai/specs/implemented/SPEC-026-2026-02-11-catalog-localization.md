@@ -514,8 +514,6 @@ Custom field definitions and values are entities like any other — they can hav
 }
 ```
 
-The Translation Manager writes this identity (`<entityId>:<key>`, option labels as flat `options.<value>.label` fields). Like every translation row, it belongs to the exact tenant and organization it was saved under, and `GET /api/entities/definitions` reads the row of the caller's own tenant and organization.
-
 **CustomFieldValue translations (text/multiline only):**
 ```json
 // entity_type: 'entities:custom_field_value', entity_id: '<value_id>'
@@ -677,10 +675,7 @@ One generic table, one row per entity, JSONB stores all locale translations. Thi
 ## Changelog
 
 ### 2026-10-04 (v4)
-- `GET /api/entities/definitions` localizes `label`, `description` and option labels from `entities:custom_field_def` translations for the locale resolved by the translation overlay (`?locale`, `X-Locale`, `locale` cookie, `Accept-Language`), with a per-field fallback to the base value. One translation query per request, applied after the definitions cache so the cached payload stays locale-independent.
-- Backward compatibility: no route, schema or cache-key change. Without a matching translation the response is unchanged; a caller that sends a locale (explicitly or via `Accept-Language`) now receives translated values where translations exist.
-- Corrected the record identity and option-label format above to what the Translation Manager writes (`<entityId>:<key>`, flat `options.<value>.label`); the earlier definition-id and nested-`options` examples were never written by any caller.
-- Integration coverage: `TC-ENTITIES-009` (locales, fallback, option labels, cached read) and `TC-ENTITIES-010` (organization isolation).
+- `GET /api/entities/definitions` localizes `label`, `description` and option labels from `entities:custom_field_def` translations (own tenant and organization) for the request locale, falling back to the base value; the cached payload stays locale-independent. Corrected the record identity and option-label format above to what the Translation Manager writes.
 
 ### 2026-02-13 (v3)
 - Complete rewrite per pkarw direction (issue #527, Feb 12 comment)

@@ -26,7 +26,6 @@ import {
   DialogTitle,
 } from '@open-mercato/ui/primitives/dialog'
 import { normalizeCustomFieldOptions } from '@open-mercato/shared/modules/entities/options'
-import { buildCustomFieldDefTranslationRecordId } from '@open-mercato/core/modules/entities/lib/definition-translation-identity'
 import { TranslationManager } from '@open-mercato/core/modules/translations/components/TranslationManager'
 
 type Def = FieldDefinition
@@ -652,7 +651,7 @@ export default function EditDefinitionsPage({ params }: { params?: { entityId?: 
               mode="embedded"
               compact
               entityType="entities:custom_field_def"
-              recordId={buildCustomFieldDefTranslationRecordId(translateDef.entityId, translateDef.def.key)}
+              recordId={`${translateDef.entityId}:${translateDef.def.key}`}
               baseValues={translateBaseValues}
               translatableFields={translateFields}
             />
